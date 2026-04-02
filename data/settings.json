@@ -1,0 +1,12 @@
+{
+  "mp4_folder": "D:/0.YOUTUBE/V",
+  "mp3_folder": "D:/0.YOUTUBE/Mp3",
+  "output_folder": "E:/PIANO",
+  "mp4_count": 3,
+  "mp3_count": 3,
+  "render_count": 3,
+  "duration_minutes": 5,
+  "aspect_ratio": "16:9",
+  "quality": "2K",
+  "reverse_enabled": true
+}
