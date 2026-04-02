@@ -16,7 +16,7 @@ from .config_manager import ConfigManager
 from .constants import APP_NAME, DEFAULT_VIDEO_ENCODER, WINDOW_TITLE
 from .file_utils import ensure_output_folder, scan_mp3_files, scan_mp4_files, validate_folder_exists
 from .models import AppSettings
-from .render_worker import RenderWorker
+from .render_coordinator import RenderCoordinator
 from .ui_main import MainUI
 
 
@@ -32,7 +32,7 @@ class MainWindow(QMainWindow):
         self.ui = MainUI()
         self.ui.setup_ui(central_widget)
         self.config_manager = ConfigManager()
-        self.worker: RenderWorker | None = None
+        self.coordinator: RenderCoordinator | None = None
 
         self._connect_signals()
         self._load_initial_settings()
@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
         return len(errors) == 0, errors
 
     def start_render(self) -> None:
-        if self.worker and self.worker.isRunning():
+        if not self.ui.start_btn.isEnabled():
             self._append_log("Render is already running.")
             return
 
@@ -172,28 +172,34 @@ class MainWindow(QMainWindow):
             return
 
         self.save_settings()
-        self.worker = RenderWorker(settings=settings, mp4_files=mp4_files, mp3_files=mp3_files)
-        self.worker.log_signal.connect(self._append_log)
-        self.worker.progress_signal.connect(self.ui.progress_bar.setValue)
-        self.worker.status_signal.connect(self.ui.status_label.setText)
-        self.worker.error_signal.connect(lambda msg: self._append_log(f"ERROR: {msg}"))
-        self.worker.finished_signal.connect(self._on_worker_finished)
+
+        # Dual GPU coordinator (QSV + NVENC) for stable parallel batch render.
+        # When both GPUs fail, coordinator will switch to CPU automatically.
+        self.coordinator = RenderCoordinator(
+            settings=settings,
+            mp4_files=mp4_files,
+            mp3_files=mp3_files,
+            log_cb=self._append_log,
+            status_cb=self.ui.status_label.setText,
+            progress_cb=self.ui.progress_bar.setValue,
+            on_finished=self._on_coordinator_finished,
+        )
         self._set_render_running(True)
         self.ui.progress_bar.setValue(0)
         self.ui.status_label.setText("Render started...")
         self._append_log("Render queue started.")
-        self.worker.start()
+        self.coordinator.start()
 
     def stop_render(self) -> None:
-        if self.worker and self.worker.isRunning():
-            self.worker.stop()
+        if self.coordinator:
+            self.coordinator.stop()
             self.ui.status_label.setText("Stopping render...")
             self._append_log("Stopping render...")
 
-    def _on_worker_finished(self) -> None:
+    def _on_coordinator_finished(self) -> None:
         self._set_render_running(False)
         self.ui.status_label.setText("Ready.")
-        self._append_log("Worker finished.")
+        self._append_log("Render finished.")
 
     def open_output_folder(self) -> None:
         path_text = self.ui.output_input.text().strip()

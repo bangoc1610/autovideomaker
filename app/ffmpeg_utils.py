@@ -118,16 +118,15 @@ def build_encoder_try_chain(available: set[str], preference: str) -> list[VideoE
     First successful encode locks the encoder for that output file.
 
     - **Auto**: try every *available* GPU encoder in order, **CPU (libx264) only at the end**
-      if all GPUs fail. Auto order is QSV → NVENC → AMF → VideoToolbox (QSV first helps
-      Intel+NVIDIA hybrid laptops where NVENC may fail on driver/CUDA).
-    - **Explicit GPU**: that encoder first, then other GPUs in NVENC→… order, then CPU.
+      if all GPUs fail. Auto order is QSV → NVENC → AMF → VideoToolbox.
+    - **Explicit GPU** (nvenc/qsv/amf/videotoolbox): use only that GPU (no CPU fallback here).
+      CPU fallback is handled by the render coordinator when needed.
     - **CPU only**: libx264 alone.
     """
     pref = (preference or VIDEO_ENCODER_AUTO).strip().lower()
     if pref == VIDEO_ENCODER_CPU:
         return [_profile_cpu()]
 
-    # Auto: all GPUs first (QSV before NVENC), libx264 strictly last.
     if pref == VIDEO_ENCODER_AUTO:
         order_defs: list[tuple[str, Callable[[], VideoEncodeProfile]]] = [
             ("h264_qsv", _profile_qsv),
@@ -135,17 +134,11 @@ def build_encoder_try_chain(available: set[str], preference: str) -> list[VideoE
             ("h264_amf", _profile_amf),
             ("h264_videotoolbox", _profile_videotoolbox),
         ]
-    else:
-        order_defs = [
-            ("h264_nvenc", _profile_nvenc),
-            ("h264_qsv", _profile_qsv),
-            ("h264_amf", _profile_amf),
-            ("h264_videotoolbox", _profile_videotoolbox),
+        gpu_chain: list[VideoEncodeProfile] = [
+            factory() for name, factory in order_defs if name in available
         ]
-
-    gpu_pairs: list[tuple[str, Callable[[], VideoEncodeProfile]]] = [
-        (name, factory) for name, factory in order_defs if name in available
-    ]
+        gpu_chain.append(_profile_cpu())
+        return gpu_chain
 
     pref_to_codec = {
         VIDEO_ENCODER_NVENC: "h264_nvenc",
@@ -153,14 +146,19 @@ def build_encoder_try_chain(available: set[str], preference: str) -> list[VideoE
         VIDEO_ENCODER_AMF: "h264_amf",
         VIDEO_ENCODER_VIDEOTOOLBOX: "h264_videotoolbox",
     }
-    if pref in pref_to_codec and pref != VIDEO_ENCODER_AUTO:
-        want = pref_to_codec[pref]
-        gpu_pairs.sort(key=lambda x: (0 if x[0] == want else 1, x[0]))
+    want_codec = pref_to_codec.get(pref)
+    if not want_codec:
+        return []
 
-    chain: list[VideoEncodeProfile] = [factory() for _, factory in gpu_pairs]
-    # CPU always last when user did not choose CPU-only (after every GPU option exhausted).
-    chain.append(_profile_cpu())
-    return chain
+    if want_codec == "h264_nvenc" and "h264_nvenc" in available:
+        return [_profile_nvenc()]
+    if want_codec == "h264_qsv" and "h264_qsv" in available:
+        return [_profile_qsv()]
+    if want_codec == "h264_amf" and "h264_amf" in available:
+        return [_profile_amf()]
+    if want_codec == "h264_videotoolbox" and "h264_videotoolbox" in available:
+        return [_profile_videotoolbox()]
+    return []
 
 
 def resolve_video_encoder(
