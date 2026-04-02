@@ -15,6 +15,22 @@ Desktop app render video hang loat tu folder `.mp4` va `.mp3` voi UI PySide6 va 
 - Log realtime, progress tong, status hien tai.
 - Luu/load settings JSON.
 - Stop render an toan, terminate ffmpeg process dang chay.
+- Chon encoder video: Auto (GPU uu tien), CPU (libx264), hoac NVIDIA / Intel / AMD / VideoToolbox.
+
+## GPU / tang toc encode
+
+- Trong **Render Settings**, chon **Video encoder**:
+  - **Auto**: moi file output thu lan luot **GPU co trong FFmpeg** (thu tu: **QSV → NVENC → AMF → VideoToolbox**), encoder dau tien chay duoc se khoa cho het file; **chi khi tat ca GPU deu loi** moi dung **libx264** (CPU).
+  - **CPU – libx264**: on dinh, khong can GPU.
+  - **GPU – NVENC / QSV / AMF / VideoToolbox**: encode bang phan cung neu FFmpeg cua ban co build kem encoder do.
+
+- Can **FFmpeg build day du** (tren Windows nhieu ban static da co `h264_nvenc`). Kiem tra:
+
+```powershell
+ffmpeg -hide_banner -encoders | findstr h264_nvenc
+```
+
+- Scale / crop / filter `reverse` van chay tren CPU; **GPU chu yeu giam tai o buoc encode H.264**. Audio van encode AAC tren CPU (nhe).
 
 ## Yeu cau he thong
 
@@ -94,7 +110,7 @@ python main.py
    - So file mp3 moi output
    - So video can render
    - Thoi luong output (phut)
-   - Aspect ratio va quality
+   - Aspect ratio, quality, **Video encoder** (GPU/CPU)
    - Reverse neu can
 3. Bam `Start Render`.
 4. Theo doi progress/status/log realtime.

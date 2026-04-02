@@ -9,6 +9,7 @@ from .constants import (
     DEFAULT_MP4_COUNT,
     DEFAULT_RENDER_COUNT,
     DEFAULT_REVERSE,
+    DEFAULT_VIDEO_ENCODER,
     QUALITY_KEEP,
 )
 
@@ -25,6 +26,7 @@ class AppSettings:
     aspect_ratio: str = ASPECT_KEEP
     quality: str = QUALITY_KEEP
     reverse_enabled: bool = DEFAULT_REVERSE
+    video_encoder: str = DEFAULT_VIDEO_ENCODER
 
 
 @dataclass

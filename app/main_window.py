@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config_manager import ConfigManager
-from .constants import APP_NAME, WINDOW_TITLE
+from .constants import APP_NAME, DEFAULT_VIDEO_ENCODER, WINDOW_TITLE
 from .file_utils import ensure_output_folder, scan_mp3_files, scan_mp4_files, validate_folder_exists
 from .models import AppSettings
 from .render_worker import RenderWorker
@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
             aspect_ratio=self.ui.aspect_combo.currentText(),
             quality=self.ui.quality_combo.currentText(),
             reverse_enabled=self.ui.reverse_checkbox.isChecked(),
+            video_encoder=self.ui.encoder_combo.currentData() or DEFAULT_VIDEO_ENCODER,
         )
 
     def _apply_settings_to_ui(self, settings: AppSettings) -> None:
@@ -106,6 +107,12 @@ class MainWindow(QMainWindow):
         self.ui.duration_spin.setValue(settings.duration_minutes)
         self.ui.aspect_combo.setCurrentText(settings.aspect_ratio)
         self.ui.quality_combo.setCurrentText(settings.quality)
+        enc = settings.video_encoder or DEFAULT_VIDEO_ENCODER
+        enc_idx = self.ui.encoder_combo.findData(enc)
+        if enc_idx >= 0:
+            self.ui.encoder_combo.setCurrentIndex(enc_idx)
+        else:
+            self.ui.encoder_combo.setCurrentIndex(0)
         self.ui.reverse_checkbox.setChecked(settings.reverse_enabled)
 
     def save_settings(self) -> None:

@@ -1,12 +1,15 @@
 import subprocess
 import shutil
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
 from .ffmpeg_utils import (
     FFmpegError,
+    VideoEncodeProfile,
+    build_encoder_try_chain,
     concat_audio_files,
     concat_video_files,
     create_reverse_clip,
@@ -15,6 +18,7 @@ from .ffmpeg_utils import (
     mux_video_audio,
     normalize_audio_clip,
     normalize_video_clip,
+    probe_available_video_encoders,
     probe_media,
     trim_media,
 )
@@ -36,6 +40,8 @@ class RenderWorker(QThread):
         self.mp3_files = mp3_files
         self._stop_requested = False
         self._current_process: subprocess.Popen[str] | None = None
+        self._encode_profile: VideoEncodeProfile | None = None
+        self._encoder_try_chain: list[VideoEncodeProfile] = []
 
     def stop(self) -> None:
         self._stop_requested = True
@@ -62,6 +68,34 @@ class RenderWorker(QThread):
         job_fraction = (job_index - 1) / total_jobs + (step + 1) / total_steps / total_jobs
         pct = min(99, int(job_fraction * 100))
         self.progress_signal.emit(pct)
+
+    def _video_encode_call(self, fn: Callable[..., None], *args, **kwargs) -> None:
+        """
+        Run FFmpeg encode. First time in this output: try each GPU encoder in order, then CPU.
+        After one success, lock encoder for the rest of this output file.
+        """
+        if self._encode_profile is not None:
+            kwargs["profile"] = self._encode_profile
+            fn(*args, **kwargs)
+            return
+
+        last_error: FFmpegError | None = None
+        for profile in self._encoder_try_chain:
+            kwargs["profile"] = profile
+            try:
+                fn(*args, **kwargs)
+                self._encode_profile = profile
+                self._log(f"Encoder locked to: {profile.display_name}")
+                return
+            except InterruptedError:
+                raise
+            except FFmpegError as ex:
+                last_error = ex
+                self._log(f"{profile.display_name} failed — trying next encoder.")
+                continue
+        if last_error is not None:
+            raise last_error
+        raise FFmpegError("No encoder candidate available.")
 
     def run(self) -> None:
         try:
@@ -95,6 +129,12 @@ class RenderWorker(QThread):
                 raise FFmpegError("No valid mp4 files with readable metadata.")
             if not valid_mp3:
                 raise FFmpegError("No valid mp3 files with readable metadata.")
+
+            available_encoders = probe_available_video_encoders()
+            self._log(
+                "FFmpeg video encoders (detected): "
+                + (", ".join(sorted(available_encoders)) if available_encoders else "(none)")
+            )
 
             output_root = Path(self.settings.output_folder).expanduser()
             output_root.mkdir(parents=True, exist_ok=True)
@@ -144,6 +184,16 @@ class RenderWorker(QThread):
                 normalized_video_clips: list[Path] = []
                 normalized_audio_clips: list[Path] = []
 
+                self._encoder_try_chain = build_encoder_try_chain(
+                    available_encoders,
+                    self.settings.video_encoder,
+                )
+                self._encode_profile = None
+                self._log(
+                    "Encoder try order (first success locks for this output): "
+                    + " → ".join(p.display_name for p in self._encoder_try_chain)
+                )
+
                 try:
                     v_total = len(video_timeline)
                     a_total = len(audio_timeline)
@@ -159,7 +209,8 @@ class RenderWorker(QThread):
                             )
                             self._log(f"Creating reverse clip for: {src.name}")
                             reversed_clip = temp_dir / f"{base_name}_rev_raw.mp4"
-                            create_reverse_clip(
+                            self._video_encode_call(
+                                create_reverse_clip,
                                 src,
                                 reversed_clip,
                                 log_fn=self._log,
@@ -174,7 +225,8 @@ class RenderWorker(QThread):
                             f"Encode video {clip_idx}/{v_total} · {src.name}"
                         )
                         normalized = temp_dir / f"{base_name}_norm.mp4"
-                        normalize_video_clip(
+                        self._video_encode_call(
+                            normalize_video_clip,
                             input_clip=source_for_normalize,
                             output_clip=normalized,
                             width=plan.target_width,
@@ -266,7 +318,8 @@ class RenderWorker(QThread):
 
                     self._check_stop()
                     self.status_signal.emit(f"Output {idx}/{self.settings.render_count} · Mux final MP4")
-                    mux_video_audio(
+                    self._video_encode_call(
+                        mux_video_audio,
                         video_file=video_trim,
                         audio_file=audio_trim,
                         output_file=plan.job.output_path,

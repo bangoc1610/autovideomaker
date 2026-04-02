@@ -25,6 +25,24 @@ DEFAULT_AUDIO_CODEC = "aac"
 DEFAULT_PIXEL_FORMAT = "yuv420p"
 DEFAULT_PRESET = "medium"
 
+# Stored in settings JSON (value -> UI label in combo)
+VIDEO_ENCODER_AUTO = "auto"
+VIDEO_ENCODER_CPU = "cpu"
+VIDEO_ENCODER_NVENC = "nvenc"
+VIDEO_ENCODER_QSV = "qsv"
+VIDEO_ENCODER_AMF = "amf"
+VIDEO_ENCODER_VIDEOTOOLBOX = "videotoolbox"
+DEFAULT_VIDEO_ENCODER = VIDEO_ENCODER_AUTO
+
+VIDEO_ENCODER_CHOICES: list[tuple[str, str]] = [
+    (VIDEO_ENCODER_AUTO, "Auto — thử hết GPU (QSV→NVENC→…), cuối cùng mới CPU"),
+    (VIDEO_ENCODER_CPU, "CPU – libx264"),
+    (VIDEO_ENCODER_NVENC, "GPU – NVIDIA NVENC (h264_nvenc)"),
+    (VIDEO_ENCODER_QSV, "GPU – Intel Quick Sync (h264_qsv)"),
+    (VIDEO_ENCODER_AMF, "GPU – AMD AMF (h264_amf)"),
+    (VIDEO_ENCODER_VIDEOTOOLBOX, "GPU – Apple VideoToolbox (macOS)"),
+]
+
 SUPPORTED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
 SUPPORTED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".aac"}
 

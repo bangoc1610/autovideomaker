@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .constants import ASPECT_OPTIONS, QUALITY_OPTIONS
+from .constants import ASPECT_OPTIONS, QUALITY_OPTIONS, VIDEO_ENCODER_CHOICES
 
 
 class MainUI:
@@ -74,6 +74,11 @@ class MainUI:
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(QUALITY_OPTIONS)
         settings_layout.addRow("Quality", self.quality_combo)
+
+        self.encoder_combo = QComboBox()
+        for value, label in VIDEO_ENCODER_CHOICES:
+            self.encoder_combo.addItem(label, value)
+        settings_layout.addRow("Video encoder", self.encoder_combo)
 
         self.reverse_checkbox = QCheckBox("Reverse")
         settings_layout.addRow("", self.reverse_checkbox)
